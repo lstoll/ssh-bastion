@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -55,11 +56,18 @@ func (r *Relay) ProxyHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	s, err := newSession(net.JoinHostPort(host, port))
+	// TODO: Should probably make sure this is only port 22 on allowed hots
+	conn, err := net.Dial("tcp", net.JoinHostPort(host, port))
 	if err != nil {
-		http.Error(w, "Failed to establish connection", http.StatusInternalServerError)
-		return
+		r.Logger.WithError(err).WithFields(logrus.Fields{
+			"host": host,
+			"port": port,
+		}).Warn("error establishing connection to server")
+
+		http.Error(w, "error establishing connection to server", http.StatusInternalServerError)
 	}
+
+	s := newSession(r.Logger, conn)
 
 	r.sessionsMu.Lock()
 	defer r.sessionsMu.Unlock()
@@ -100,13 +108,6 @@ func (r *Relay) ConnectHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// check pos/ack params, if not 0 reject because we don't support resumption yet
-	ack := req.URL.Query().Get("ack")
-	pos := req.URL.Query().Get("pos")
-	if ack != "0" || pos != "0" {
-		http.Error(w, "Resumption not yet supported. PRs welcome", http.StatusUnprocessableEntity)
-	}
-
 	c, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		r.Logger.WithError(err).WithField("sid", sid).Warn("Failed to upgrade session")
@@ -115,16 +116,8 @@ func (r *Relay) ConnectHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	defer c.Close()
 
-	err = sess.Run(c)
+	ack, _ := strconv.Atoi(req.URL.Query().Get("ack"))
+	pos, _ := strconv.Atoi(req.URL.Query().Get("pos"))
 
-	defer func() {
-		_ = sess.Close()
-		delete(r.sessions, sid)
-	}()
-
-	if err != nil {
-		r.Logger.WithError(err).WithField("sid", sid).Warn("Closing session")
-		http.Error(w, "Couldn't upgrade connection", http.StatusBadRequest)
-		return
-	}
+	sess.Run(c, ack, pos)
 }
