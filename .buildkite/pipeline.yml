@@ -5,4 +5,4 @@ steps:
           version: "1.12"
           import: github.com/lstoll/tcp-bastion
           environment:
-            - GO111MODULE=off
+            - GO111MODULE=on
