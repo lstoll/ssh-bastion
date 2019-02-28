@@ -88,20 +88,10 @@ func (r *Relay) ProxyHandler(w http.ResponseWriter, req *http.Request) {
 
 	afterCloseFunc := func() {
 		r.Logger.WithField("sid", sid).Info("closed")
-
-		r.sessionsMu.Lock()
-		delete(r.sessions, sid)
-		r.sessionsMu.Unlock()
+		r.deleteSession(sid)
 	}
 	s := newSession(r.Logger.WithField("sid", sid), conn, inactivityDuration, afterCloseFunc)
-
-	r.sessionsMu.Lock()
-	if r.sessions == nil {
-		r.sessions = map[string]*session{}
-	}
-	r.sessions[sid] = s
-	r.sessionsMu.Unlock()
-
+	r.setSession(sid, s)
 	s.Start()
 
 	w.Header().Set("Content-Type", "text/plain")
@@ -155,4 +145,21 @@ func (r *Relay) getSession(sid string) (s *session, ok bool) {
 
 	s, ok = r.sessions[sid]
 	return
+}
+
+func (r *Relay) setSession(sid string, s *session) {
+	r.sessionsMu.Lock()
+	defer r.sessionsMu.Unlock()
+
+	if r.sessions == nil {
+		r.sessions = map[string]*session{}
+	}
+	r.sessions[sid] = s
+}
+
+func (r *Relay) deleteSession(sid string) {
+	r.sessionsMu.Lock()
+	defer r.sessionsMu.Unlock()
+
+	delete(r.sessions, sid)
 }
