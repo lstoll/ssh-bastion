@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/lstoll/ssh-bastion/nassh"
+	"github.com/lstoll/tcp-bastion/nassh"
 	"github.com/sirupsen/logrus"
 )
 
