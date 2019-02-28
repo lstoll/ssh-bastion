@@ -1,20 +1,29 @@
 package nassh
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 )
 
+const bsidLength = 16
+
+// TODO: Determine or leave configurable
+const inactivityDuration = 60 * time.Second
+
 // https://chromium.googlesource.com/apps/libapps/+show/master/nassh/doc/relay-protocol.md
 
 type Relay struct {
-	Logger     logrus.FieldLogger
+	Logger logrus.FieldLogger
+
 	sessions   map[string]*session
 	sessionsMu sync.Mutex
 }
@@ -65,25 +74,42 @@ func (r *Relay) ProxyHandler(w http.ResponseWriter, req *http.Request) {
 		}).Warn("error establishing connection to server")
 
 		http.Error(w, "error establishing connection to server", http.StatusInternalServerError)
+		return
 	}
 
-	s := newSession(r.Logger, conn)
+	bsid := make([]byte, bsidLength)
+	if _, err := rand.Read(bsid); err != nil {
+		r.Logger.WithError(err).Error("error generating session ID")
+
+		http.Error(w, "error generating session ID", http.StatusInternalServerError)
+		return
+	}
+	sid := hex.EncodeToString(bsid)
+
+	afterCloseFunc := func() {
+		r.Logger.WithField("sid", sid).Info("closed")
+
+		r.sessionsMu.Lock()
+		delete(r.sessions, sid)
+		r.sessionsMu.Unlock()
+	}
+	s := newSession(r.Logger.WithField("sid", sid), conn, inactivityDuration, afterCloseFunc)
 
 	r.sessionsMu.Lock()
-	defer r.sessionsMu.Unlock()
-
 	if r.sessions == nil {
 		r.sessions = map[string]*session{}
 	}
+	r.sessions[sid] = s
+	r.sessionsMu.Unlock()
 
-	r.sessions[s.sessID] = s
+	s.Start()
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Access-Control-Allow-Origin", req.Header.Get("origin"))
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	// response is plain text, query string that will be passed to /connect
-	fmt.Fprintf(w, "%s", s.sessID)
+	fmt.Fprintf(w, "%s", sid)
 }
 
 var upgrader = websocket.Upgrader{
@@ -101,7 +127,8 @@ func (r *Relay) ConnectHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "no session id provided", http.StatusBadRequest)
 		return
 	}
-	sess, ok := r.sessions[sid]
+
+	sess, ok := r.getSession(sid)
 	if !ok {
 		r.Logger.WithField("sid", sid).Warn("Session not found")
 		http.Error(w, "no session found", http.StatusGone)
@@ -119,5 +146,13 @@ func (r *Relay) ConnectHandler(w http.ResponseWriter, req *http.Request) {
 	ack, _ := strconv.Atoi(req.URL.Query().Get("ack"))
 	pos, _ := strconv.Atoi(req.URL.Query().Get("pos"))
 
-	sess.Run(c, ack, pos)
+	sess.Serve(c, ack, pos)
+}
+
+func (r *Relay) getSession(sid string) (s *session, ok bool) {
+	r.sessionsMu.Lock()
+	defer r.sessionsMu.Unlock()
+
+	s, ok = r.sessions[sid]
+	return
 }

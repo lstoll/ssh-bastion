@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"net"
 	"sync"
+	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -106,71 +106,76 @@ type session struct {
 	logger logrus.FieldLogger
 	// conn is the connection to the SSH server
 	conn net.Conn
-
-	sessID string
+	// inactivityDuration is the duration after which, if a client has not
+	// been connected, the session will be automatically closed.
+	inactivityDuration time.Duration
+	// afterCloseFunc will be invoked after the sesson is closed.
+	afterCloseFunc func()
 
 	// clientCh receives new client connections
 	clientCh chan *client
 
 	// closedCh is closed when the session is closed
 	closedCh chan struct{}
-	// closedLock ensures the session can only be closed a single time
-	closedLock sync.Mutex
-	// closed is set to true when the session is closed. Readers and writers
-	// must hold closedLock.
-	closed bool
+	// closedOnce ensures the session can only be closed a single time
+	closedOnce sync.Once
 }
 
-func newSession(logger logrus.FieldLogger, conn net.Conn) *session {
+// newSession creates a new session. Call Start to start reading from the server.
+func newSession(logger logrus.FieldLogger, conn net.Conn, inactivityDuration time.Duration, afterCloseFunc func()) *session {
 	s := &session{
-		logger:   logger,
-		conn:     conn,
-		sessID:   uuid.New().String(), // todo - more secure + unique
+		logger:             logger,
+		conn:               conn,
+		inactivityDuration: inactivityDuration,
+		afterCloseFunc:     afterCloseFunc,
+
 		clientCh: make(chan *client),
 		closedCh: make(chan struct{}),
 	}
-	go s.loop()
 
 	return s
 }
 
 func (s *session) Close() {
-	s.closedLock.Lock()
-	defer s.closedLock.Unlock()
+	s.closedOnce.Do(func() {
+		_ = s.conn.Close()
+		close(s.closedCh)
 
-	if s.closed {
-		// already closed
-		return
-	}
-
-	_ = s.conn.Close()
-	s.closed = true
-	close(s.closedCh)
+		if s.afterCloseFunc != nil {
+			s.afterCloseFunc()
+		}
+	})
 }
 
-func (s *session) IsClosed() bool {
-	s.closedLock.Lock()
-	defer s.closedLock.Unlock()
-
-	return s.closed
+func (s *session) Start() {
+	go s.loop()
 }
 
 func (s *session) loop() {
 	serverReadCh := make(chan serverRead)
 	go s.serverReadLoop(serverReadCh)
 
-	buf := newBuffer(bufferSize, posMask)
+	inactivityTimer := time.NewTimer(s.inactivityDuration)
+	defer inactivityTimer.Stop()
+
 	var currentClient *client
 	var clientReadCh chan clientRead
+
+	// Close any current client connection, if there is one.
+	closeCurrentClient := func() {
+		if currentClient != nil {
+			currentClient.Close()
+			currentClient = nil
+			clientReadCh = nil
+			drainAndResetTimer(inactivityTimer, s.inactivityDuration)
+		}
+	}
+
+	buf := newBuffer(bufferSize, posMask)
 	for {
 		select {
 		case newClient := <-s.clientCh:
-			// Close out any existing client
-			if currentClient != nil {
-				currentClient.Close()
-				currentClient = nil
-				clientReadCh = nil
-			}
+			closeCurrentClient()
 			currentClient = newClient
 
 			// Send the client any reads it missed. This can happen either when:
@@ -182,9 +187,7 @@ func (s *session) loop() {
 			// disconnected, the server sent some data.
 			if err := currentClient.Catchup(buf); err != nil {
 				s.logger.WithError(err).Error("error writing to client")
-				currentClient.Close()
-				currentClient = nil
-				clientReadCh = nil
+				closeCurrentClient()
 				continue
 			}
 
@@ -215,27 +218,21 @@ func (s *session) loop() {
 					// resumes, the data in the buffer will be used to catch up the
 					// the reconnected client.
 					s.logger.WithError(err).Error("error writing to client")
-					currentClient.Close()
-					currentClient = nil
-					clientReadCh = nil
+					closeCurrentClient()
 				}
 			}
 		case r, ok := <-clientReadCh:
 			if !ok {
 				// The client read loop exited, meaning the client connection can
 				// no longer be read.
-				currentClient.Close()
-				currentClient = nil
-				clientReadCh = nil
+				closeCurrentClient()
 				continue
 			}
 
 			if err := buf.DiscardBefore(r.ack); err != nil {
 				// The client sent some bogus ack value. Disconnect them.
 				s.logger.WithError(err).Error("bogus ack")
-				currentClient.Close()
-				currentClient = nil
-				clientReadCh = nil
+				closeCurrentClient()
 				continue
 			}
 
@@ -246,15 +243,18 @@ func (s *session) loop() {
 				s.logger.WithError(err).Error("error writing to server")
 				s.Close()
 			}
+		case <-inactivityTimer.C:
+			if currentClient != nil {
+				// There is still a client connected. Carry on.
+				inactivityTimer.Reset(s.inactivityDuration)
+				continue
+			}
+
+			s.Close()
 		case <-s.closedCh:
 			// The entire session is shutting down. Disconnect any connected
 			// client and exit the loop.
-			if currentClient != nil {
-				currentClient.Close()
-				currentClient = nil
-				clientReadCh = nil
-			}
-
+			closeCurrentClient()
 			break
 		}
 	}
@@ -319,7 +319,7 @@ func (s *session) clientReadLoop(c *client, readCh chan<- clientRead) {
 	}
 }
 
-func (s *session) Run(ws *websocket.Conn, ack int, pos int) {
+func (s *session) Serve(ws *websocket.Conn, ack int, pos int) {
 	client := newClient(ws, ack, pos)
 	select {
 	case s.clientCh <- client:
@@ -327,4 +327,13 @@ func (s *session) Run(ws *websocket.Conn, ack int, pos int) {
 	case <-s.closedCh:
 		client.Close()
 	}
+}
+
+func drainAndResetTimer(t *time.Timer, d time.Duration) {
+	// https://golang.org/pkg/time/#Timer.Reset
+	if !t.Stop() {
+		<-t.C
+	}
+
+	t.Reset(d)
 }
