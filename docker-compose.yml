@@ -1,0 +1,19 @@
+version: '3'
+services:
+  vault:
+    image: vault:1.0.3
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: vault-root-token
+    cap_add:
+      - IPC_LOCK
+    ports:
+     - "8200:8200"
+  sshd:
+    build:
+      context: ./ssh-server
+      dockerfile: Dockerfile
+    environment:
+      VAULT_TOKEN: vault-root-token
+      VAULT_ADDR: http://vault:8200
+    ports:
+     - "2222:22"
