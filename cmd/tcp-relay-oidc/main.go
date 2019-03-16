@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
-	"github.com/lstoll/tcp-bastion/nassh"
+	"github.com/lstoll/nassh-relay"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 	"gopkg.in/alecthomas/kingpin.v2"
