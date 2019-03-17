@@ -13,4 +13,4 @@ tmpfile=$(mktemp /tmp/signed-ssh.XXXXXXXXXXXX)
 
 vault write -field=signed_key ssh-client-signer/sign/my-role public_key=@$keyfile > $tmpfile
 
-exec ssh -i $tmpfile -i $keyfile -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 root@localhost
+exec ssh -i $tmpfile -i $keyfile -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 vault@localhost

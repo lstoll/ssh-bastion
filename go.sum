@@ -1,3 +1,4 @@
+cloud.google.com/go v0.34.0 h1:eOI3/cP2VTU6uZLDYAoic+eyzzB9YyGmJ7eIjl8rOPg=
 cloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc h1:cAKDfWh5VpdgMhJosfJnn5/FoN2SRZ4p7fJNX58YPaU=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
@@ -21,8 +22,8 @@ github.com/gorilla/websocket v1.4.0 h1:WDFjx/TMzVgy9VdMMQi2K2Emtwi2QcUQsztZ/zLaH
 github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1 h1:mweAR1A6xJ3oS2pRaGiHgQ4OO8tzTaLawm8vnODuwDk=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
-github.com/lstoll/nassh-relay v0.0.0-20190316185715-5836ba563520 h1:TdhviVYe28yGnfpOqf6nEBayUzGrxFhmysMLIVb4KYM=
-github.com/lstoll/nassh-relay v0.0.0-20190316185715-5836ba563520/go.mod h1:zG7xlgOmTqCk2ikEu852qD3ZLmrwpHbyklBhSo64z8g=
+github.com/lstoll/nassh-relay v0.0.0-20190317013349-7e6dead8905f h1:116HHJlxxPSESAHf4MCbs9rW9OuX4UIXxWfQl+CdTyM=
+github.com/lstoll/nassh-relay v0.0.0-20190317013349-7e6dead8905f/go.mod h1:FXXWrpRqUNET1QqFdOgnbbcf6aXIOWnWM3/MkqS0oMg=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

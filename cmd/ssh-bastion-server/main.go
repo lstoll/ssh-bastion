@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io/ioutil"
 	"log"
 	"net/http"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/lstoll/nassh-relay"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/oauth2"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -22,13 +24,16 @@ var (
 	addr          = kingpin.Flag("addr", "Address to listen on").Default("127.0.0.1:8080").String()
 	baseURL       = kingpin.Flag("base-url", "URL where this service is served").Default("http://127.0.0.1:8080").String()
 	sessionSecret = kingpin.Flag("session-secret", "Secret for cookie session store").Default(string(securecookie.GenerateRandomKey(64))).String()
+	sshPrivKey    = kingpin.Flag("ssh-private-key", "Private SSH key for connecting to backends. If set, will proxy conns").File()
+	sshHostKey    = kingpin.Flag("ssh-host-key", "Host key for ssh sessions").File()
+	sshUser       = kingpin.Flag("ssh-user", "Username to connect to backends").String()
 )
 
 func main() {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
+	log := logrus.New()
 	kingpin.Parse()
 
 	cookieStore := sessions.NewCookieStore([]byte(*sessionSecret))
@@ -52,7 +57,15 @@ func main() {
 	verifier := provider.Verifier(&oidc.Config{ClientID: *clientID})
 
 	relay := nassh.Relay{
-		Logger: logrus.New(),
+		Logger:      log,
+		HTTPSession: cookieStore,
+	}
+	if *sshPrivKey != nil {
+		sp, err := newSSHProxy(log)
+		if err != nil {
+			log.WithError(err).Fatal("Could't init ssh proxy")
+		}
+		relay.Dialer = sp.Dial
 	}
 
 	m := http.NewServeMux()
@@ -124,16 +137,7 @@ func main() {
 			return
 		}
 
-		q := r.URL.Query()
-		q.Set("ext", ext.(string))
-		q.Set("path", path.(string))
-		q.Set("version", version.(string))
-		q.Set("method", method.(string))
-		r.URL.RawQuery = q.Encode()
-
-		// Delegate to the cookie handler. This will set up the backend
-		// connection and return the user to the extension.
-		relay.SimpleCookieHandler(w, r)
+		relay.StartSession(w, r, claims.Email, r.FormValue("state"), ext.(string), path.(string), version.(string), method.(string))
 	})
 
 	m.HandleFunc("/proxy", relay.ProxyHandler)
@@ -148,4 +152,29 @@ func logRequest(handler http.Handler) http.Handler {
 		log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
 		handler.ServeHTTP(w, r)
 	})
+}
+
+func newSSHProxy(l logrus.FieldLogger) (*sshProxy, error) {
+	hb, err := ioutil.ReadAll(*sshHostKey)
+	if err != nil {
+		return nil, err
+	}
+	hostKey, err := ssh.ParsePrivateKey(hb)
+	if err != nil {
+		return nil, err
+	}
+	cb, err := ioutil.ReadAll(*sshPrivKey)
+	if err != nil {
+		return nil, err
+	}
+	clientKey, err := ssh.ParsePrivateKey(cb)
+	if err != nil {
+		return nil, err
+	}
+	return &sshProxy{
+		l:              l,
+		hostKey:        hostKey,
+		clientKey:      clientKey,
+		clientUsername: *sshUser,
+	}, nil
 }

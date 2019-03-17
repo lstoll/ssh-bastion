@@ -1,4 +1,4 @@
-version: '3'
+version: '3.7'
 services:
   vault:
     image: vault:1.0.3
@@ -10,10 +10,12 @@ services:
      - "8200:8200"
   sshd:
     build:
-      context: ./ssh-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ssh-server/Dockerfile
     environment:
       VAULT_TOKEN: vault-root-token
       VAULT_ADDR: http://vault:8200
     ports:
      - "2222:22"
+    init: true
+    restart: on-failure
