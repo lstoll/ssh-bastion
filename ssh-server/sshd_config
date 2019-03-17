@@ -24,7 +24,7 @@
 
 # Logging
 #SyslogFacility AUTH
-LogLevel INFO
+LogLevel DEBUG
 
 # Authentication:
 
@@ -122,3 +122,4 @@ Subsystem	sftp	/usr/lib/openssh/sftp-server
 #	ForceCommand cvs server
 
 TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pem
+UsePrivilegeSeparation no
