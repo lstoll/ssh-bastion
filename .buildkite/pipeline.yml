@@ -6,3 +6,6 @@ steps:
           import: github.com/lstoll/tcp-bastion
           environment:
             - GO111MODULE=on
+  - wait
+  - name: ":docker:"
+    command: ./.buildkite/docker-release.sh
