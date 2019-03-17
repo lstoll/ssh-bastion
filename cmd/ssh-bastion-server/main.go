@@ -18,15 +18,15 @@ import (
 )
 
 var (
-	issuer        = kingpin.Flag("issuer", "OIDC Issuer").Required().String()
-	clientID      = kingpin.Flag("client-id", "OIDC Client ID").Required().String()
-	clientSecret  = kingpin.Flag("client-secret", "OIDC Client Secret").Required().String()
-	addr          = kingpin.Flag("addr", "Address to listen on").Default("127.0.0.1:8080").String()
-	baseURL       = kingpin.Flag("base-url", "URL where this service is served").Default("http://127.0.0.1:8080").String()
-	sessionSecret = kingpin.Flag("session-secret", "Secret for cookie session store").Default(string(securecookie.GenerateRandomKey(64))).String()
-	sshPrivKey    = kingpin.Flag("ssh-private-key", "Private SSH key for connecting to backends. If set, will proxy conns").File()
-	sshHostKey    = kingpin.Flag("ssh-host-key", "Host key for ssh sessions").File()
-	sshUser       = kingpin.Flag("ssh-user", "Username to connect to backends").String()
+	issuer        = kingpin.Flag("issuer", "OIDC Issuer").Envar("ISSUER").Required().String()
+	clientID      = kingpin.Flag("client-id", "OIDC Client ID").Envar("CLIENT_ID").Required().String()
+	clientSecret  = kingpin.Flag("client-secret", "OIDC Client Secret").Envar("CLIENT_SECRET").Required().String()
+	addr          = kingpin.Flag("addr", "Address to listen on").Envar("ADDR").Default("127.0.0.1:8080").String()
+	baseURL       = kingpin.Flag("base-url", "URL where this service is served").Envar("BASE_URL").Default("http://127.0.0.1:8080").String()
+	sessionSecret = kingpin.Flag("session-secret", "Secret for cookie session store").Envar("COOKIE_SECRET").Default(string(securecookie.GenerateRandomKey(64))).String()
+	sshPrivKey    = kingpin.Flag("ssh-private-key", "Private SSH key for connecting to backends. If set, will proxy conns").Envar("SSH_PRIVATE_KEY").File()
+	sshHostKey    = kingpin.Flag("ssh-host-key", "Host key for ssh sessions").Envar("SSH_HOST_KEY").File()
+	sshUser       = kingpin.Flag("ssh-user", "Username to connect to backends").Envar("SSH_USER").String()
 )
 
 func main() {
